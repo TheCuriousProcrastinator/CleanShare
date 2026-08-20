@@ -24,6 +24,10 @@ final class OutputWindowController: NSObject, NSWindowDelegate {
         displayView.enqueue(sampleBuffer)
     }
 
+    func updatePresentation(isPaused: Bool, isBlackScreen: Bool) {
+        displayView.updatePresentation(isPaused: isPaused, isBlackScreen: isBlackScreen)
+    }
+
     func close() {
         guard let outputWindow else { return }
         isClosingProgrammatically = true
@@ -59,14 +63,22 @@ final class OutputWindowController: NSObject, NSWindowDelegate {
 }
 
 private final class SampleBufferDisplayView: NSView {
+    private let containerLayer = CALayer()
     private let displayLayer = AVSampleBufferDisplayLayer()
+    private let blackScreenLayer = CALayer()
+    private var isPaused = false
 
     override init(frame frameRect: NSRect) {
         super.init(frame: frameRect)
         wantsLayer = true
-        layer = displayLayer
+        layer = containerLayer
+        containerLayer.backgroundColor = NSColor.black.cgColor
+        containerLayer.addSublayer(displayLayer)
+        containerLayer.addSublayer(blackScreenLayer)
         displayLayer.videoGravity = .resizeAspect
         displayLayer.backgroundColor = NSColor.black.cgColor
+        blackScreenLayer.backgroundColor = NSColor.black.cgColor
+        blackScreenLayer.isHidden = true
     }
 
     required init?(coder: NSCoder) {
@@ -75,10 +87,15 @@ private final class SampleBufferDisplayView: NSView {
 
     override func layout() {
         super.layout()
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
         displayLayer.frame = bounds
+        blackScreenLayer.frame = bounds
+        CATransaction.commit()
     }
 
     func enqueue(_ sampleBuffer: CMSampleBuffer) {
+        guard !isPaused else { return }
         let renderer = displayLayer.sampleBufferRenderer
         if renderer.status == .failed {
             renderer.flush()
@@ -87,7 +104,17 @@ private final class SampleBufferDisplayView: NSView {
         renderer.enqueue(sampleBuffer)
     }
 
+    func updatePresentation(isPaused: Bool, isBlackScreen: Bool) {
+        self.isPaused = isPaused
+        CATransaction.begin()
+        CATransaction.setDisableActions(true)
+        blackScreenLayer.isHidden = !isBlackScreen
+        CATransaction.commit()
+    }
+
     func reset() {
+        isPaused = false
+        blackScreenLayer.isHidden = true
         displayLayer.sampleBufferRenderer.flush(
             removingDisplayedImage: true,
             completionHandler: nil

@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
+    @State private var isChangingShortcut = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -50,6 +51,8 @@ struct ContentView: View {
                         model.selectCaptureArea()
                     }
                 }
+
+                outputControls
             } else {
                 Button("Select Capture Area") {
                     model.selectCaptureArea()
@@ -57,6 +60,8 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .disabled(model.displays.isEmpty)
             }
+
+            panicHotKeySettings
 
             if model.permissionState == .required {
                 permissionNotice
@@ -72,10 +77,76 @@ struct ContentView: View {
             Spacer(minLength: 0)
         }
         .padding(24)
-        .frame(minWidth: 520, minHeight: 360)
+        .frame(minWidth: 560, minHeight: 520)
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshDisplays()
             model.refreshPermissionState()
+        }
+        .sheet(isPresented: $isChangingShortcut) {
+            ShortcutRecorderSheet(currentShortcut: model.panicShortcut) { shortcut in
+                model.changePanicShortcut(to: shortcut)
+            }
+        }
+    }
+
+    private var outputControls: some View {
+        GroupBox("CleanShare Output") {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(spacing: 8) {
+                    Circle()
+                        .fill(outputStateColor)
+                        .frame(width: 10, height: 10)
+                    Text(model.isSharing ? model.presentationState.rawValue : "Not Sharing")
+                        .font(.headline)
+                }
+
+                HStack {
+                    Button(model.isBlackScreen ? "End Black Screen" : "Black Screen") {
+                        model.toggleBlackScreen()
+                    }
+                    .disabled(!model.isSharing)
+
+                    Button(model.isPaused ? "Resume" : "Pause") {
+                        model.togglePause()
+                    }
+                    .disabled(!model.isSharing || model.isBlackScreen)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var panicHotKeySettings: some View {
+        GroupBox("Black Screen Panic Hotkey") {
+            HStack {
+                Text(model.panicShortcut.displayString)
+                    .font(.system(.body, design: .monospaced).weight(.semibold))
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 5)
+                    .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
+
+                Spacer()
+
+                Button("Change…") {
+                    isChangingShortcut = true
+                }
+
+                Button("Reset to Default") {
+                    model.resetPanicShortcut()
+                }
+                .disabled(model.panicShortcut == .default)
+            }
+            .padding(.vertical, 4)
+        }
+    }
+
+    private var outputStateColor: Color {
+        guard model.isSharing else { return .secondary }
+        switch model.presentationState {
+        case .live: return Color.green
+        case .paused: return Color.orange
+        case .blackScreen: return Color.red
         }
     }
 

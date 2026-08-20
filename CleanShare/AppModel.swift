@@ -9,21 +9,33 @@ final class AppModel: ObservableObject {
         case required
     }
 
+    enum PresentationState: String {
+        case live = "Live"
+        case paused = "Paused"
+        case blackScreen = "Black Screen"
+    }
+
     @Published private(set) var configuration: CaptureConfiguration?
     @Published private(set) var displays: [DisplayDescriptor] = []
     @Published var selectedDisplayUUID = ""
     @Published private(set) var isSharing = false
     @Published private(set) var permissionState: PermissionState = .required
+    @Published private(set) var isPaused = false
+    @Published private(set) var isBlackScreen = false
+    @Published private(set) var panicShortcut = GlobalHotKey.default
     @Published var statusMessage: String?
 
     private let store = CaptureConfigurationStore()
     private let selectionController = RegionSelectionController()
     private let captureManager = ScreenCaptureManager()
     private let outputController = OutputWindowController()
+    private let hotKeyStore = GlobalHotKeyStore()
+    private let hotKeyManager = GlobalHotKeyManager()
     private var captureGeneration = 0
 
     init() {
         configuration = store.load()
+        panicShortcut = hotKeyStore.load() ?? .default
         refreshDisplays()
         refreshPermissionState()
 
@@ -33,11 +45,20 @@ final class AppModel: ObservableObject {
         captureManager.onStreamError = { [weak self] error in
             guard let self else { return }
             self.isSharing = false
+            self.resetPresentationState()
             self.outputController.close()
             self.statusMessage = "Capture stopped: \(error.localizedDescription)"
         }
         outputController.onUserClose = { [weak self] in
             Task { await self?.stopSharing(closeOutput: false) }
+        }
+        hotKeyManager.onPressed = { [weak self] in
+            self?.toggleBlackScreen()
+        }
+        do {
+            try hotKeyManager.register(panicShortcut)
+        } catch {
+            statusMessage = "The panic hotkey could not be registered: \(error.localizedDescription)"
         }
     }
 
@@ -52,6 +73,12 @@ final class AppModel: ObservableObject {
 
     var isSavedDisplayAvailable: Bool {
         configuration == nil || savedDisplay != nil
+    }
+
+    var presentationState: PresentationState {
+        if isBlackScreen { return .blackScreen }
+        if isPaused { return .paused }
+        return .live
     }
 
     func refreshDisplays() {
@@ -111,6 +138,7 @@ final class AppModel: ObservableObject {
         guard ensureScreenRecordingPermission() else { return }
 
         let sourceRect = configuration.sourceRect(for: display)
+        resetPresentationState()
         outputController.show(aspectRatio: sourceRect.width / sourceRect.height)
         captureGeneration += 1
         let generation = captureGeneration
@@ -139,10 +167,54 @@ final class AppModel: ObservableObject {
         captureGeneration += 1
         await captureManager.stop()
         isSharing = false
+        resetPresentationState()
         if closeOutput {
             outputController.close()
         }
         statusMessage = "Sharing stopped."
+    }
+
+    func toggleBlackScreen() {
+        guard isSharing else { return }
+        if isBlackScreen {
+            isBlackScreen = false
+            isPaused = false
+        } else {
+            isBlackScreen = true
+        }
+        applyPresentationState()
+        statusMessage = isBlackScreen
+            ? "CleanShare Output is black."
+            : (isPaused ? "CleanShare Output is paused." : "CleanShare Output is live.")
+    }
+
+    func togglePause() {
+        guard isSharing, !isBlackScreen else { return }
+        isPaused.toggle()
+        applyPresentationState()
+        statusMessage = isPaused
+            ? "CleanShare Output is paused on the last captured frame."
+            : "CleanShare Output is live."
+    }
+
+    @discardableResult
+    func changePanicShortcut(to shortcut: GlobalHotKey) -> Bool {
+        guard shortcut.isValid else { return false }
+        guard shortcut != panicShortcut else { return true }
+        do {
+            try hotKeyManager.register(shortcut)
+            panicShortcut = shortcut
+            hotKeyStore.save(shortcut)
+            statusMessage = "Panic hotkey changed to \(shortcut.displayString)."
+            return true
+        } catch {
+            statusMessage = error.localizedDescription
+            return false
+        }
+    }
+
+    func resetPanicShortcut() {
+        _ = changePanicShortcut(to: .default)
     }
 
     func openScreenRecordingSettings() {
@@ -164,5 +236,18 @@ final class AppModel: ObservableObject {
             statusMessage = "Screen Recording permission is required. Allow CleanShare in System Settings, then return to the app and try again. macOS may require the app to be reopened."
         }
         return granted
+    }
+
+    private func applyPresentationState() {
+        outputController.updatePresentation(
+            isPaused: isPaused,
+            isBlackScreen: isBlackScreen
+        )
+    }
+
+    private func resetPresentationState() {
+        isPaused = false
+        isBlackScreen = false
+        applyPresentationState()
     }
 }

@@ -16,6 +16,6 @@ struct CleanShareApp: App {
             ContentView()
                 .environmentObject(model)
         }
-        .defaultSize(width: 560, height: 420)
+        .defaultSize(width: 620, height: 680)
     }
 }
