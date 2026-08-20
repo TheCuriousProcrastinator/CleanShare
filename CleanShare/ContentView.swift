@@ -9,7 +9,6 @@ import SwiftUI
 
 struct ContentView: View {
     @EnvironmentObject private var model: AppModel
-    @State private var isChangingShortcut = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -61,7 +60,9 @@ struct ContentView: View {
                 .disabled(model.displays.isEmpty)
             }
 
-            panicHotKeySettings
+            GroupBox("Black Screen Panic Hotkey") {
+                PanicHotKeyControls()
+            }
 
             if model.permissionState == .required {
                 permissionNotice
@@ -81,11 +82,7 @@ struct ContentView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didBecomeActiveNotification)) { _ in
             model.refreshDisplays()
             model.refreshPermissionState()
-        }
-        .sheet(isPresented: $isChangingShortcut) {
-            ShortcutRecorderSheet(currentShortcut: model.panicShortcut) { shortcut in
-                model.changePanicShortcut(to: shortcut)
-            }
+            model.refreshLaunchAtLoginState()
         }
     }
 
@@ -113,30 +110,6 @@ struct ContentView: View {
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, 4)
-        }
-    }
-
-    private var panicHotKeySettings: some View {
-        GroupBox("Black Screen Panic Hotkey") {
-            HStack {
-                Text(model.panicShortcut.displayString)
-                    .font(.system(.body, design: .monospaced).weight(.semibold))
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 5)
-                    .background(.secondary.opacity(0.12), in: RoundedRectangle(cornerRadius: 6))
-
-                Spacer()
-
-                Button("Change…") {
-                    isChangingShortcut = true
-                }
-
-                Button("Reset to Default") {
-                    model.resetPanicShortcut()
-                }
-                .disabled(model.panicShortcut == .default)
-            }
             .padding(.vertical, 4)
         }
     }

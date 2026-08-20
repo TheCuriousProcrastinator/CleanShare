@@ -23,6 +23,8 @@ final class AppModel: ObservableObject {
     @Published private(set) var isPaused = false
     @Published private(set) var isBlackScreen = false
     @Published private(set) var panicShortcut = GlobalHotKey.default
+    @Published private(set) var launchAtLoginState: LaunchAtLoginState = .notRegistered
+    @Published private(set) var launchAtLoginErrorMessage: String?
     @Published var statusMessage: String?
 
     private let store = CaptureConfigurationStore()
@@ -31,6 +33,7 @@ final class AppModel: ObservableObject {
     private let outputController = OutputWindowController()
     private let hotKeyStore = GlobalHotKeyStore()
     private let hotKeyManager = GlobalHotKeyManager()
+    private let launchAtLoginManager = LaunchAtLoginManager()
     private var captureGeneration = 0
 
     init() {
@@ -38,6 +41,7 @@ final class AppModel: ObservableObject {
         panicShortcut = hotKeyStore.load() ?? .default
         refreshDisplays()
         refreshPermissionState()
+        refreshLaunchAtLoginState()
 
         captureManager.onFrame = { [weak outputController] sampleBuffer in
             outputController?.enqueue(sampleBuffer)
@@ -79,6 +83,14 @@ final class AppModel: ObservableObject {
         if isBlackScreen { return .blackScreen }
         if isPaused { return .paused }
         return .live
+    }
+
+    var sharingStateLabel: String {
+        isSharing ? presentationState.rawValue : "Not Sharing"
+    }
+
+    var canStartSharing: Bool {
+        configuration != nil && savedDisplay != nil && !isSharing
     }
 
     func refreshDisplays() {
@@ -215,6 +227,39 @@ final class AppModel: ObservableObject {
 
     func resetPanicShortcut() {
         _ = changePanicShortcut(to: .default)
+    }
+
+    func refreshLaunchAtLoginState() {
+        launchAtLoginState = launchAtLoginManager.state
+    }
+
+    func setLaunchAtLoginEnabled(_ enabled: Bool) {
+        launchAtLoginErrorMessage = nil
+        do {
+            try launchAtLoginManager.setEnabled(enabled)
+            refreshLaunchAtLoginState()
+
+            switch launchAtLoginState {
+            case .enabled:
+                statusMessage = "Launch at Login is enabled."
+            case .notRegistered:
+                statusMessage = "Launch at Login is disabled."
+            case .requiresApproval:
+                statusMessage = "Launch at Login requires approval in System Settings."
+            case .unavailable:
+                launchAtLoginErrorMessage = "Launch at Login is unavailable for this copy of CleanShare."
+                statusMessage = launchAtLoginErrorMessage
+            }
+        } catch {
+            refreshLaunchAtLoginState()
+            let message = "Could not update Launch at Login: \(error.localizedDescription)"
+            launchAtLoginErrorMessage = message
+            statusMessage = message
+        }
+    }
+
+    func openLoginItemsSettings() {
+        launchAtLoginManager.openSystemSettings()
     }
 
     func openScreenRecordingSettings() {

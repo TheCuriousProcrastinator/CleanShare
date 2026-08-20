@@ -17,5 +17,15 @@ struct CleanShareApp: App {
                 .environmentObject(model)
         }
         .defaultSize(width: 620, height: 680)
+
+        MenuBarExtra("CleanShare", systemImage: "rectangle.on.rectangle") {
+            MenuBarView()
+                .environmentObject(model)
+        }
+
+        Settings {
+            SettingsView()
+                .environmentObject(model)
+        }
     }
 }
