@@ -1,0 +1,28 @@
+name: Manual clean-environment validation
+
+on:
+  workflow_dispatch:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Build CleanShare
+        run: |
+          set -euo pipefail
+          xcodebuild \
+            -project CleanShare.xcodeproj \
+            -scheme CleanShare \
+            -configuration Debug \
+            -destination 'platform=macOS' \
+            -derivedDataPath /tmp/CleanShare-CI \
+            CODE_SIGNING_ALLOWED=NO \
+            build
